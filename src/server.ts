@@ -2,6 +2,7 @@
 
 import express, { Application } from 'express';
 import cors from 'cors';
+import path from 'path';
 import { errorHandler } from './_middleware/errorHandler';
 import { initialize } from './_helpers/db';
 import usersController from './users/users.controller';
@@ -12,6 +13,8 @@ const app: Application = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors());
+
+app.use(express.static(path.join(__dirname, '../public')));
 
 // API Routes
 app.use('/users', usersController);
