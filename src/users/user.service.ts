@@ -5,8 +5,11 @@ import { db } from '../_helpers/db';
 import { Role } from '../_helpers/role';
 import { User } from './user.model';
 import type { UserCreationAttributes } from './user.model';
+import jwt from 'jsonwebtoken';
+import config from '../../config.json';
 
 export const userService = {
+    authenticate,
     getAll,
     getById,
     create,
@@ -60,6 +63,34 @@ async function update(id: number, params: Partial<UserCreationAttributes> & { pa
 async function _delete(id: number): Promise<void> {
     const user = await getUser(id);
     await user.destroy();
+}
+
+async function authenticate({ email, password }: any) {
+    // 1. Find the user by email (we use 'withHash' scope so we can actually check the password)
+    const user = await db.User.scope('withHash').findOne({ where: { email } });
+    
+    if (!user) {
+        throw new Error('Email or password is incorrect');
+    }
+
+    // 2. Compare the plain text password to the hashed database password
+    const isPasswordMatch = await bcrypt.compare(password, user.passwordHash);
+    
+    if (!isPasswordMatch) {
+        throw new Error('Email or password is incorrect');
+    }
+
+    // 3. Generate the JWT token
+    const token = jwt.sign({ sub: user.id, role: user.role }, config.jwtSecret, { expiresIn: '7d' });
+
+    // 4. Return the user info (without the password hash!) and the token
+    const userWithoutHash = { ...user.toJSON() };
+    delete userWithoutHash.passwordHash;
+
+    return {
+        ...userWithoutHash,
+        token
+    };
 }
 
 // Helper: Get user or throw error
