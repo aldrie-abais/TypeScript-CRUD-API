@@ -526,31 +526,103 @@ document.getElementById('cancel-account-btn').addEventListener('click', function
 
 ////////////////////////////////////////////////////////////////////////
 
-// Phase 6B: Departments
-function renderDepartmentsTable() {
+// ==========================================
+// Phase 6B: Departments (CONNECTED TO MYSQL)
+// ==========================================
+
+async function renderDepartmentsTable() {
     const listContainer = document.getElementById('departments-list');
-    listContainer.innerHTML = ''; // Clear out the container first
+    listContainer.innerHTML = '<p class="p-3 fs-5">Loading departments from database...</p>'; 
     
-    // Loop through the database and create a row for each department
-    window.db.departments.forEach(dept => {
-        const row = document.createElement('div');
-        row.className = 'row ms-4 mt-3 me-4 align-items-center text-center';
-        row.innerHTML = `
-            <div class="col-4"><p class="fs-5"><strong>${dept.name}</strong></p></div>
-            <div class="col-4"><p class="fs-5"><strong>${dept.description}</strong></p></div>
-            <div class="col-4">
-                <button class="ms-3 rounded p-2 mb-3" style="border: 3px solid rgb(0, 106, 193); color:rgb(0, 106, 193); background-color: white;"><strong>Edit</strong></button>
-                <button class="ms-3 rounded p-2 mb-3" style="border: 3px solid rgb(193, 45, 0); color:rgb(193, 45, 0); background-color: white;"><strong>Delete</strong></button>
-            </div>
-        `;
-        listContainer.appendChild(row);
-    });
+    try {
+        // 1. Fetch departments from Node.js
+        const response = await fetch('http://localhost:4000/departments', {
+            method: 'GET',
+            headers: getAuthHeader() // Send our security badge
+        });
+
+        if (!response.ok) throw new Error('Failed to fetch departments');
+        const departments = await response.json();
+
+        listContainer.innerHTML = ''; 
+
+        // 2. Handle empty state
+        if (departments.length === 0) {
+            listContainer.innerHTML = '<p class="p-3 fs-5 text-muted">No departments found. Add one above!</p>';
+            return;
+        }
+
+        // 3. Render the MySQL data
+        departments.forEach(dept => {
+            const row = document.createElement('div');
+            row.className = 'row ms-4 mt-3 me-4 align-items-center text-center border-bottom pb-3';
+            row.innerHTML = `
+                <div class="col-4"><p class="fs-5 mb-0"><strong>${dept.name}</strong></p></div>
+                <div class="col-4"><p class="fs-5 mb-0"><strong>${dept.description}</strong></p></div>
+                <div class="col-4">
+                    <button class="ms-3 rounded p-2" style="border: 3px solid rgb(193, 45, 0); color:rgb(193, 45, 0); background-color: white;" onclick="deleteDepartment(${dept.id})">
+                        <strong>Delete</strong>
+                    </button>
+                </div>
+            `;
+            listContainer.appendChild(row);
+        });
+    } catch (error) {
+        console.error(error);
+        listContainer.innerHTML = '<p class="p-3 text-danger">Error loading departments.</p>';
+    }
 }
 
-// Wire up the Add button
-document.getElementById('add-dept-btn').addEventListener('click', function() {
-    showToast('Not implemented', 'warning');
+// 4. Create a New Department (POST)
+// Note: We use prompts here for a quick UI, but you could build a modal later!
+document.getElementById('add-dept-btn').addEventListener('click', async function() {
+    const name = prompt("Enter the new Department Name:");
+    if (!name) return; // User clicked cancel
+    
+    const description = prompt("Enter a short description:");
+    if (!description) return;
+
+    try {
+        const headers = getAuthHeader();
+        headers['Content-Type'] = 'application/json';
+
+        const response = await fetch('http://localhost:4000/departments', {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify({ name, description })
+        });
+
+        if (response.ok) {
+            showToast('Department added successfully!', 'success');
+            renderDepartmentsTable(); // Refresh the table
+        } else {
+            showToast('Failed to add department.', 'danger');
+        }
+    } catch (err) {
+        showToast('Network error while saving.', 'danger');
+    }
 });
+
+// 5. Delete a Department (DELETE)
+window.deleteDepartment = async function(id) {
+    if (confirm("Are you sure you want to delete this department?")) {
+        try {
+            const response = await fetch(`http://localhost:4000/departments/${id}`, {
+                method: 'DELETE',
+                headers: getAuthHeader()
+            });
+
+            if (response.ok) {
+                showToast("Department deleted.", "success");
+                renderDepartmentsTable(); // Refresh the table
+            } else {
+                showToast("Failed to delete.", "danger");
+            }
+        } catch (error) {
+            showToast("Network error.", "danger");
+        }
+    }
+};
 
 // Phase 6C: Employees
 function renderEmployeesTable() {
