@@ -370,30 +370,45 @@ document.getElementById('profile-edit-btn').addEventListener('click', function()
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// Phase 6A: Accounts (Part 1 - Render, Reset, Delete)
-function renderAccountsTable() {
+// Phase 6A: Accounts (CONNECTED TO MYSQL)
+async function renderAccountsTable() {
     const listContainer = document.getElementById('accounts-list');
-    listContainer.innerHTML = ''; 
+    listContainer.innerHTML = '<p class="p-3">Loading accounts from database...</p>'; 
     
-    // Loop through the database and create a row for each account [cite: 248]
-    window.db.accounts.forEach(acc => {
-        const row = document.createElement('div');
-        row.className = 'row row-cols-5 ms-4 mt-3 me-4 align-items-center text-center';
+    try {
+        // 1. Fetch all users from your TypeScript backend
+        const response = await fetch('http://localhost:4000/users', {
+            method: 'GET',
+            headers: getAuthHeader() // Send our JWT token!
+        });
+
+        if (!response.ok) throw new Error('Failed to fetch accounts');
+        const users = await response.json();
+
+        listContainer.innerHTML = ''; // Clear loading text
         
-        // Use a ternary operator ( ? : ) to show a checkmark if verified, or an X if not
-        row.innerHTML = `
-            <div><p class="fs-5"><strong>${acc.firstName} ${acc.lastName}</strong></p></div>
-            <div><p class="fs-5"><strong>${acc.email}</strong></p></div>
-            <div><p class="fs-5"><strong>${acc.role}</strong></p></div>
-            <div><p class="fs-5"><strong>${acc.verified ? '✅' : '❌'}</strong></p></div>
-            <div>
-                <button data-action="edit" data-email="${acc.email}" class="ms-3 rounded p-2 mb-3" style="border: 3px solid rgb(0, 106, 193); color:rgb(0, 106, 193); background-color: white;"><strong>Edit</strong></button>
-                <button data-action="reset" data-email="${acc.email}" class="ms-3 rounded p-2 mb-3" style="border: 3px solid rgb(193, 135, 0); color:rgb(193, 135, 0); background-color: white;"><strong>Reset PW</strong></button>
-                <button data-action="delete" data-email="${acc.email}" class="ms-3 rounded p-2 mb-3" style="border: 3px solid rgb(193, 45, 0); color:rgb(193, 45, 0); background-color: white;"><strong>Delete</strong></button>
-            </div>
-        `;
-        listContainer.appendChild(row);
-    });
+        // 2. Loop through MySQL users and render them
+        users.forEach(acc => {
+            const row = document.createElement('div');
+            row.className = 'row row-cols-5 ms-4 mt-3 me-4 align-items-center text-center';
+            
+            // Notice we are using acc.id for the data attributes now!
+            row.innerHTML = `
+                <div><p class="fs-5"><strong>${acc.firstName} ${acc.lastName}</strong></p></div>
+                <div><p class="fs-5"><strong>${acc.email}</strong></p></div>
+                <div><p class="fs-5"><strong>${acc.role}</strong></p></div>
+                <div><p class="fs-5"><strong>✅</strong></p></div>
+                <div>
+                    <button data-action="edit" data-id="${acc.id}" class="ms-3 rounded p-2 mb-3" style="border: 3px solid rgb(0, 106, 193); color:rgb(0, 106, 193); background-color: white;"><strong>Edit</strong></button>
+                    <button data-action="delete" data-id="${acc.id}" class="ms-3 rounded p-2 mb-3" style="border: 3px solid rgb(193, 45, 0); color:rgb(193, 45, 0); background-color: white;"><strong>Delete</strong></button>
+                </div>
+            `;
+            listContainer.appendChild(row);
+        });
+    } catch (error) {
+        console.error(error);
+        listContainer.innerHTML = '<p class="p-3 text-danger">Error loading accounts.</p>';
+    }
 }
 
     // Final Challenge: Event Delegation for Accounts List
@@ -404,7 +419,7 @@ function renderAccountsTable() {
 
         // Read our custom data attributes
         const action = btn.getAttribute('data-action');
-        const email = btn.getAttribute('data-email');
+        const id = btn.getAttribute('data-id'); // <--- CHANGED TO ID
 
         // Route the click to the correct function
         if (action === 'edit') window.editAccount(email);
@@ -427,18 +442,25 @@ window.resetAccountPassword = function(email) {
     }
 };
 
-// Action: Delete Account [cite: 252]
-window.deleteAccount = function(email) {
-    // Prevent self-deletion [cite: 252]
-    if (email === currentUser.email) {
-        showToast("You cannot delete your own account.",'danger');
-        return;
-    }
-    // Confirm deletion [cite: 252]
+// Action: Delete Account (CONNECTED TO MYSQL)
+window.deleteAccount = async function(id) {
     if (confirm("Are you sure you want to delete this account?")) {
-        window.db.accounts = window.db.accounts.filter(acc => acc.email !== email);
-        saveToStorage();
-        renderAccountsTable(); // Refresh the table
+        try {
+            const response = await fetch(`http://localhost:4000/users/${id}`, {
+                method: 'DELETE',
+                headers: getAuthHeader()
+            });
+
+            if (response.ok) {
+                showToast("Account deleted successfully.", "success");
+                renderAccountsTable(); // Refresh the table from the DB
+            } else {
+                const data = await response.json();
+                showToast("Failed to delete: " + data.message, "danger");
+            }
+        } catch (error) {
+            showToast("Network error while deleting.", "danger");
+        }
     }
 };
 
