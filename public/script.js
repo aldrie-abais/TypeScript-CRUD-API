@@ -624,65 +624,113 @@ window.deleteDepartment = async function(id) {
     }
 };
 
-// Phase 6C: Employees
-function renderEmployeesTable() {
-    const listContainer = document.getElementById('employees-list');
-    listContainer.innerHTML = ''; 
-    
-    // Render the list of employees
-    window.db.employees.forEach(emp => {
-        const row = document.createElement('div');
-        row.className = 'd-flex flex-row justify-content-around ms-4 mt-3 me-4 align-items-center text-center';
-        row.innerHTML = `
-            <div><p class="fs-5"><strong>${emp.id}</strong></p></div>
-            <div><p class="fs-5"><strong>${emp.email}</strong></p></div>
-            <div><p class="fs-5"><strong>${emp.position}</strong></p></div>
-            <div><p class="fs-5"><strong>${emp.department}</strong></p></div>
-            <div><button class="rounded p-2" style="border: 3px solid rgb(193, 45, 0); color:rgb(193, 45, 0); background-color: white;" onclick="deleteEmployee('${emp.id}')"><strong>Delete</strong></button></div>
-        `;
-        listContainer.appendChild(row);
-    });
+// ==========================================
+// Phase 6C: Employees (CONNECTED TO MYSQL)
+// ==========================================
 
-    // Populate the Department Dropdown
-    const deptSelect = document.getElementById('emp-dept');
-    deptSelect.innerHTML = '<option value="">Select Department...</option>';
-    window.db.departments.forEach(dept => {
-        const option = document.createElement('option');
-        option.value = dept.name;
-        option.textContent = dept.name;
-        deptSelect.appendChild(option);
-    });
+async function renderEmployeesTable() {
+    const listContainer = document.getElementById('employees-list');
+    listContainer.innerHTML = '<p class="p-3 fs-5">Loading employees...</p>'; 
+    
+    try {
+        // 1. Fetch Employees AND Departments simultaneously!
+        const [empRes, deptRes] = await Promise.all([
+            fetch('http://localhost:4000/employees', { headers: getAuthHeader() }),
+            fetch('http://localhost:4000/departments', { headers: getAuthHeader() })
+        ]);
+
+        const employees = await empRes.json();
+        const departments = await deptRes.json();
+
+        // 2. Render Employees
+        listContainer.innerHTML = ''; 
+        if (employees.length === 0) {
+            listContainer.innerHTML = '<p class="p-3 fs-5 text-muted">No employees found.</p>';
+        } else {
+            employees.forEach(emp => {
+                const row = document.createElement('div');
+                row.className = 'd-flex flex-row justify-content-around ms-4 mt-3 me-4 align-items-center text-center border-bottom pb-3';
+                row.innerHTML = `
+                    <div style="width: 20%;"><p class="fs-5 mb-0"><strong>${emp.empId}</strong></p></div>
+                    <div style="width: 20%;"><p class="fs-5 mb-0"><strong>${emp.email}</strong></p></div>
+                    <div style="width: 20%;"><p class="fs-5 mb-0"><strong>${emp.position}</strong></p></div>
+                    <div style="width: 20%;"><p class="fs-5 mb-0"><strong>${emp.department}</strong></p></div>
+                    <div style="width: 20%;">
+                        <button class="rounded p-2" style="border: 3px solid rgb(193, 45, 0); color:rgb(193, 45, 0); background-color: white;" onclick="deleteEmployee(${emp.id})">
+                            <strong>Delete</strong>
+                        </button>
+                    </div>
+                `;
+                listContainer.appendChild(row);
+            });
+        }
+
+        // 3. Populate Department Dropdown dynamically from MySQL
+        const deptSelect = document.getElementById('emp-dept');
+        deptSelect.innerHTML = '<option value="">Select Department...</option>';
+        departments.forEach(dept => {
+            const option = document.createElement('option');
+            option.value = dept.name;
+            option.textContent = dept.name;
+            deptSelect.appendChild(option);
+        });
+
+    } catch (err) {
+        listContainer.innerHTML = '<p class="p-3 text-danger">Error loading data.</p>';
+    }
 }
 
-// Save Employee
-document.getElementById('save-emp-btn').addEventListener('click', function() {
-    const id = document.getElementById('emp-id').value.trim();
+// Save Employee (POST)
+document.getElementById('save-emp-btn').addEventListener('click', async function() {
+    const empId = document.getElementById('emp-id').value.trim();
     const email = document.getElementById('emp-email').value.trim();
     const position = document.getElementById('emp-position').value.trim();
     const department = document.getElementById('emp-dept').value;
     const hireDate = document.getElementById('emp-hire-date').value;
 
-    if (!id || !email || !position || !department || !hireDate) return showToast('Fill all fields.', 'warning');
+    if (!empId || !email || !position || !department || !hireDate) {
+        return showToast('Fill all fields.', 'warning');
+    }
 
-    // Enforce email matching an existing account
-    const accountExists = window.db.accounts.find(acc => acc.email === email);
-    if (!accountExists) return showToast('Error: User Email must match an existing account.', 'danger');
+    try {
+        const response = await fetch('http://localhost:4000/employees', {
+            method: 'POST',
+            headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ empId, email, position, department, hireDate })
+        });
 
-    window.db.employees.push({ id, email, position, department, hireDate });
-    saveToStorage();
-    renderEmployeesTable();
-    
-    // Clear inputs
-    document.querySelectorAll('#employees-page input').forEach(input => input.value = '');
-    document.getElementById('emp-dept').value = '';
+        if (response.ok) {
+            showToast('Employee saved to database!', 'success');
+            renderEmployeesTable(); // Refresh UI
+            // Clear inputs
+            document.querySelectorAll('#employees-page input').forEach(input => input.value = '');
+            document.getElementById('emp-dept').value = '';
+        } else {
+            showToast('Failed to save employee.', 'danger');
+        }
+    } catch (err) {
+        showToast('Network error.', 'danger');
+    }
 });
 
-// Delete Employee
-window.deleteEmployee = function(id) {
+// Delete Employee (DELETE)
+window.deleteEmployee = async function(id) {
     if (confirm('Delete this employee?')) {
-        window.db.employees = window.db.employees.filter(emp => emp.id !== id);
-        saveToStorage();
-        renderEmployeesTable();
+        try {
+            const response = await fetch(`http://localhost:4000/employees/${id}`, {
+                method: 'DELETE',
+                headers: getAuthHeader()
+            });
+
+            if (response.ok) {
+                showToast('Employee deleted.', 'success');
+                renderEmployeesTable(); // Refresh UI
+            } else {
+                showToast('Failed to delete.', 'danger');
+            }
+        } catch (err) {
+            showToast('Network error.', 'danger');
+        }
     }
 };
 
@@ -803,70 +851,3 @@ const toast = new bootstrap.Toast(toastEl);
 toast.show();
 }
 
-// Part 3, Step 3: Check Auth on Page Load
-async function checkAuthOnLoad() {
-    const token = sessionStorage.getItem('authToken'); // Check if a token exists
-    
-    if (token) {
-        try {
-            // Ask the backend to decode the token and tell us who is logged in
-            const res = await fetch('http://localhost:3000/api/profile', {
-                method: 'GET',
-                headers: getAuthHeader()
-            });
-            
-            const data = await res.json();
-
-            if (res.ok) {
-                // Token is valid! Restore the user's UI state
-                setAuthState(true, data.user);
-            } else {
-                // Token is expired or invalid, clear it out
-                sessionStorage.removeItem('authToken');
-                setAuthState(false);
-            }
-        } catch (err) {
-            console.error('Auth check failed:', err);
-        }
-    } else {
-        // No token found, ensure user is logged out
-        setAuthState(false);
-    }
-}
-
-checkAuthOnLoad();
-
-// Part 3, Step 3: Check Auth on Page Load
-async function checkAuthOnLoad() {
-    const token = sessionStorage.getItem('authToken'); 
-    
-    if (token) {
-        try {
-            const res = await fetch('http://localhost:3000/api/profile', {
-                method: 'GET',
-                headers: getAuthHeader()
-            });
-            
-            const data = await res.json();
-
-            if (res.ok) {
-                setAuthState(true, data.user);
-            } else {
-                sessionStorage.removeItem('authToken');
-                setAuthState(false);
-                navigateTo('#/'); // NEW: Kick them back to home if token is invalid
-            }
-        } catch (err) {
-            console.error('Auth check failed:', err);
-        }
-    } else {
-        setAuthState(false);
-        // NEW: If they are trying to view a protected page without a token, kick them to home
-        if (window.location.hash !== '#/' && window.location.hash !== '#/login' && window.location.hash !== '#/register') {
-            navigateTo('#/'); 
-        }
-    }
-}
-
-// Run this immediately when the script loads
-checkAuthOnLoad();
