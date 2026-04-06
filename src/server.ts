@@ -7,6 +7,7 @@ import { errorHandler } from './_middleware/errorHandler';
 import { initialize } from './_helpers/db';
 import usersController from './users/users.controller';
 import departmentsController from './departments/departments.controller'; 
+import employeesController from './employees/employees.controller';
 
 const app: Application = express();
 
@@ -20,6 +21,7 @@ app.use(express.static(path.join(__dirname, '../public')));
 // API Routes
 app.use('/users', usersController);
 app.use('/departments', departmentsController);
+app.use('/employees', employeesController);
 
 // Global Error Handler (must be last)
 app.use(errorHandler);
