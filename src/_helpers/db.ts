@@ -6,7 +6,8 @@ import { Sequelize } from 'sequelize';
 export interface Database {
     User: any; // We'll type this properly after creating the model
     Department: any; 
-    Employee: any; // New Added
+    Employee: any;
+    Request: any; // New Added
 }
 
 export const db: Database = {} as Database;
@@ -31,6 +32,9 @@ export async function initialize(): Promise<void> {
 
     const { default: empModel } = await import('../employees/employee.model');
     db.Employee = empModel(sequelize);
+
+    const { default: reqModel } = await import('../requests/request.model');
+    db.Request = reqModel(sequelize);
 
     // Sync models with database
     await sequelize.sync({ alter: true });
