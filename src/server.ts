@@ -8,6 +8,7 @@ import { initialize } from './_helpers/db';
 import usersController from './users/users.controller';
 import departmentsController from './departments/departments.controller'; 
 import employeesController from './employees/employees.controller';
+import requestsController from './requests/requests.controller';
 
 const app: Application = express();
 
@@ -22,6 +23,7 @@ app.use(express.static(path.join(__dirname, '../public')));
 app.use('/users', usersController);
 app.use('/departments', departmentsController);
 app.use('/employees', employeesController);
+app.use('/requests', requestsController);
 
 // Global Error Handler (must be last)
 app.use(errorHandler);
