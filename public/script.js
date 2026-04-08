@@ -302,7 +302,7 @@ document.getElementById('login-submit-btn').addEventListener('click', async func
             
             // 4. Update the UI state using your existing function
             // We pass the data we got back from the database
-            setAuthState(true, { username: data.firstName + ' ' + data.lastName, role: data.role });
+            setAuthState(true, { username: data.firstName + ' ' + data.lastName, email: data.email, role: data.role });
             
             // 5. Navigate to profile
             showToast('Login successful!', 'success');
@@ -734,38 +734,53 @@ window.deleteEmployee = async function(id) {
     }
 };
 
-////////////////////////////////////////
+// ==========================================
+// Phase 7: User Requests (CONNECTED TO MYSQL)
+// ==========================================
 
-// Phase 7: User Requests
-function renderRequestsTable() {
+async function renderRequestsTable() {
     const listContainer = document.getElementById('requests-list');
-    listContainer.innerHTML = ''; 
+    listContainer.innerHTML = '<p class="p-3 fs-5">Loading requests...</p>'; 
     if (!currentUser) return;
 
-    // Filter requests so users only see their own
-    const myRequests = window.db.requests.filter(req => req.employeeEmail === currentUser.email);
+    try {
+        const response = await fetch('http://localhost:4000/requests', {
+            method: 'GET',
+            headers: getAuthHeader()
+        });
 
-    if (myRequests.length === 0) {
-        listContainer.innerHTML = '<p class="lead fs-5">You have no requests yet.</p>';
-        return;
+        if (!response.ok) throw new Error('Failed to fetch requests');
+        const allRequests = await response.json();
+
+        // Filter requests so users only see their own
+        const myRequests = allRequests.filter(req => req.employeeEmail === currentUser.email);
+
+        listContainer.innerHTML = ''; 
+        if (myRequests.length === 0) {
+            listContainer.innerHTML = '<p class="lead fs-5 mt-3 ms-3">You have no requests yet.</p>';
+            return;
+        }
+
+        myRequests.forEach(req => {
+            let badgeColor = req.status === 'Approved' ? 'bg-success' : req.status === 'Rejected' ? 'bg-danger' : 'bg-warning text-dark';
+            
+            // Format our JSON items back into a readable string
+            const itemsArray = typeof req.items === 'string' ? JSON.parse(req.items) : req.items;
+            const itemsString = itemsArray.map(i => `${i.qty}x ${i.name}`).join(', ');
+
+            const row = document.createElement('div');
+            row.className = 'border p-3 mb-3 ms-3 rounded shadow-sm';
+            row.style.borderColor = 'lightgray';
+            row.innerHTML = `
+                <p class="fs-4 mb-1"><strong>${req.type}</strong> <span class="badge ${badgeColor} ms-2">${req.status}</span></p>
+                <p class="fs-5 mb-1 text-muted">Date: ${req.date}</p>
+                <p class="fs-5 mb-0">Items: ${itemsString}</p>
+            `;
+            listContainer.appendChild(row);
+        });
+    } catch (err) {
+        listContainer.innerHTML = '<p class="p-3 text-danger">Error loading requests.</p>';
     }
-
-    myRequests.forEach(req => {
-        // Assign Bootstrap colors based on status
-        let badgeColor = req.status === 'Approved' ? 'bg-success' : req.status === 'Rejected' ? 'bg-danger' : 'bg-warning text-dark';
-        
-        const itemsString = req.items.map(i => `${i.qty}x ${i.name}`).join(', ');
-
-        const row = document.createElement('div');
-        row.className = 'border p-3 mb-3 rounded shadow-sm';
-        row.style.borderColor = 'lightgray';
-        row.innerHTML = `
-            <p class="fs-4 mb-1"><strong>${req.type}</strong> <span class="badge ${badgeColor} ms-2">${req.status}</span></p>
-            <p class="fs-5 mb-1 text-muted">Date: ${req.date}</p>
-            <p class="fs-5 mb-0">Items: ${itemsString}</p>
-        `;
-        listContainer.appendChild(row);
-    });
 }
 
 // Add dynamic item row
@@ -789,7 +804,8 @@ document.getElementById('req-items-container').addEventListener('click', functio
 });
 
 // Submit Request
-document.getElementById('submit-request-btn').addEventListener('click', function(e) {
+// Submit Request (POST)
+document.getElementById('submit-request-btn').addEventListener('click', async function(e) {
     const type = document.getElementById('req-type').value;
     const itemRows = document.querySelectorAll('.req-item-row');
     const items = [];
@@ -801,13 +817,10 @@ document.getElementById('submit-request-btn').addEventListener('click', function
         if (name) items.push({ name, qty });
     });
 
-    // Validation: Must have at least 1 item
     if (items.length === 0) {
-        showToast('Validation Error: You must include at least one item.', 'danger');
-        return; 
+        return showToast('Validation Error: You must include at least one item.', 'danger');
     }
 
-    // Save the request
     const newRequest = {
         type: type,
         items: items,
@@ -816,15 +829,26 @@ document.getElementById('submit-request-btn').addEventListener('click', function
         employeeEmail: currentUser.email
     };
 
-    window.db.requests.push(newRequest);
-    saveToStorage();
-    renderRequestsTable();
-    
-    // Reset the modal inputs for next time
-    document.querySelectorAll('.item-name').forEach(input => input.value = '');
-    document.querySelectorAll('.item-qty').forEach(input => input.value = '1');
+    try {
+        const response = await fetch('http://localhost:4000/requests', {
+            method: 'POST',
+            headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+            body: JSON.stringify(newRequest)
+        });
 
-    
+        if (response.ok) {
+            showToast('Request submitted successfully!', 'success');
+            renderRequestsTable(); // Refresh UI
+            
+            // Reset the modal inputs for next time
+            document.querySelectorAll('.item-name').forEach(input => input.value = '');
+            document.querySelectorAll('.item-qty').forEach(input => input.value = '1');
+        } else {
+            showToast('Failed to submit request.', 'danger');
+        }
+    } catch (err) {
+        showToast('Network error.', 'danger');
+    }
 });
 
 ///////////////////////////////////////////////////////////////////////////////////////////
